@@ -109,6 +109,7 @@ def to_pdf(html_path, pdf_path):
 def main():
     nums = numbers()
     html = fill((HERE / "template.html").read_text(encoding="utf-8"), nums)
+    html = html.replace("/*CSS*/", (HERE / "style.css").read_text(encoding="utf-8"))
     OUT_HTML.write_text(html, encoding="utf-8")
     if to_pdf(OUT_HTML, OUT_PDF):
         print("wrote", OUT_PDF)
