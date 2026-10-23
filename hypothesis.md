@@ -73,8 +73,11 @@ timing as Part 2. Generator is seeded.
 * (1) Plain IVF-PQ ceilings 0.382 / 0.572 / 0.728 / 0.876 for m = 8/16/32/64 — **supported** (none reach 0.95).
 * (2) Re-ranking top-100 ceilings 0.858 / 0.979 / 0.999 / 1.000 — **supported** (m >= 16 pass 0.95, m = 8 does not).
   For m >= 32 recall at each nprobe equals IVF-Flat's.
-* (3) Re-ranking costs 3–18% at fixed nprobe — supported. At recall 0.95 re-ranked m = 16 (1,933 QPS) and
+* (3) **Partly supported.** Re-ranking cost at a fixed nprobe is a median 6% for nprobe >= 8 (worst 32%), but
+  17–53% at nprobe 1–4, where only a few thousand codes are scanned and the 100 exact re-scores dominate — so
+  "< 25% at a fixed nprobe" is wrong for small nprobe. At recall 0.95 re-ranked m = 16 (1,933 QPS) and
   m = 32 (1,396) beat IVF-Flat (1,096) — supported; but m = 64 (794 QPS) is slower than IVF-Flat — **not predicted**.
+  (Corrected during the final audit: an earlier version of this outcome quoted only the nprobe = 16 costs.)
 * (4) Memory 24.7 -> 536.7 bytes/vector (m = 16) — **supported**.
 
 ## Part 4

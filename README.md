@@ -56,7 +56,7 @@ bash run_all.sh --only part3   # a single step: data, tests, part1, difficulty,
   queries (each timed repeat >= 0.1 s instead of 0.5 s), and stops sweeps at
   recall 0.99 instead of 0.999. It writes
   `../results_quick/` (including `report_quick.pdf`), so it never overwrites
-  the full results. It took 9 min 18 s here, starting from an empty ground-truth cache.
+  the full results. It took 8 min 48 s here (9 min 18 s on an earlier check), starting from an empty ground-truth cache.
 
 Ground truth is cached in `../cache/` (delete it to recompute).
 
@@ -69,9 +69,11 @@ Ground truth is cached in `../cache/` (delete it to recompute).
 * Recall@10 is computed against our own exact FAISS search, from true
   distances recomputed in float64; a returned vector counts if it is no
   farther than the true 10th neighbour (so ties are not mistakes).
-* The prose numbers in `report/template.html` were written from the full run
-  in `../results/`; every table, figure and the numbers marked `{{num:...}}`
-  are regenerated from the result files.
+* Every measured number in the report text is a `{{num:...}}` placeholder that
+  `report/build_report.py` computes from the result files (same tune-half
+  selection rule as the tables), so a re-run updates text, tables and figures
+  together. A value whose result does not exist in a run (e.g. a recall target
+  the quick run never reaches) is printed as "n/a".
 * QPS: one query per `search` call, `faiss.omp_set_num_threads(1)` plus
   `threadpoolctl` limiting BLAS to one thread, 50 warm-up queries, median of
   3 repeats over the timed queries (each repeat cycles through them for at

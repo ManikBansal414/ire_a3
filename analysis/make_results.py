@@ -49,6 +49,13 @@ def load_raw():
                 extra.append({"part": "difficulty", "dataset": ds, "n_base": v["n_base"],
                               "relative_contrast_median": v["relative_contrast_median"],
                               "lid_mle_median": v["lid_mle_median"]})
+    p1s = config.RAW_DIR / "part1_summary.json"
+    if p1s.exists():  # per-call Python overhead of index.search (quoted in Part 5)
+        with open(p1s) as f:
+            for ds, us in json.load(f)["python_call_overhead_us"].items():
+                extra.append({"part": "part1", "dataset": ds, "index": "Exact",
+                              "mode": "empty search call (1-vector flat index), 1 thread",
+                              "ms_per_query": us / 1000})
     allrows = pd.concat(list(frames.values()) + [pd.DataFrame(extra)], ignore_index=True, sort=False)
     allrows.to_csv(config.RESULTS_DIR / "results.csv", index=False)
     return frames

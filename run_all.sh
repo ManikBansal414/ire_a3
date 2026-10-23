@@ -9,7 +9,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PY=${PYTHON:-python}
+if [[ -n "${PYTHON:-}" ]]; then PY=$PYTHON
+elif command -v python >/dev/null 2>&1; then PY=python
+else PY=python3; fi
 export A3_QUICK=0
 ONLY=""
 while [[ $# -gt 0 ]]; do
