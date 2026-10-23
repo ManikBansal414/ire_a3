@@ -49,9 +49,9 @@ class Queries:
     """Tune / test split with ground truth and precomputed k-th distances."""
 
     def __init__(self, xb, xq, gt_ids, k=config.K):
-        n = config.N_QUERIES_SPLIT
-        self.tune, self.test = xq[:n], xq[n:]
-        self.gt_tune, self.gt_test = gt_ids[:n], gt_ids[n:]
+        n, h = config.N_QUERIES_SPLIT, config.N_EVAL_HALF
+        self.tune, self.test = xq[:n][:h], xq[n:][:h]
+        self.gt_tune, self.gt_test = gt_ids[:n][:h], gt_ids[n:][:h]
         self.kth_tune = kth_true_distance(xb, self.tune, self.gt_tune, k)
         self.kth_test = kth_true_distance(xb, self.test, self.gt_test, k)
         self.time_tune = self.tune[: config.N_TIME_TUNE]

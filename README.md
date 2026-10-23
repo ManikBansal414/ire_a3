@@ -42,18 +42,21 @@ Run from inside `code/` with bash (Git Bash on Windows works):
 ```
 bash run_all.sh            # full run: every number, figure and table in the report
 bash run_all.sh --quick    # same pipeline on a small subset, < 15 min on a laptop
-bash run_all.sh --only part3   # a single step (data, tests, part1..part4, analyse, report)
+bash run_all.sh --only part3   # a single step: data, tests, part1, difficulty,
+                               # part2, part3, part4, analyse, report
 ```
 
 * **Full run** writes `../results/results.csv`, `../results/figures/`,
-  `../results/tables/` and `../report.pdf`. It took about
-  FULL_RUNTIME on the machine below, almost all of it single-thread query
+  `../results/tables/` and `../report.pdf`. It took 3 h 40 min on
+  the machine below, almost all of it single-thread query
   timing (5,000 test queries x 3 repeats for every point of every sweep).
 * **Quick run** uses the first 100,000 base vectors of each dataset (ground
-  truth recomputed for that subset), 50,000 synthetic vectors in Part 4, times
-  500 of the test queries instead of 5,000, and stops sweeps at recall 0.995
-  instead of 0.999. Outputs go to `../results_quick/` so they never overwrite
-  the full results. It took QUICK_RUNTIME here.
+  truth recomputed for that subset), 50,000 synthetic vectors in Part 4, scores
+  recall on 2,000 queries from each half instead of 5,000, times 300 test
+  queries (each timed repeat >= 0.1 s instead of 0.5 s), and stops sweeps at
+  recall 0.99 instead of 0.999. It writes
+  `../results_quick/` (including `report_quick.pdf`), so it never overwrites
+  the full results. It took 9 min 18 s here, starting from an empty ground-truth cache.
 
 Ground truth is cached in `../cache/` (delete it to recompute).
 
@@ -66,15 +69,24 @@ Ground truth is cached in `../cache/` (delete it to recompute).
 * Recall@10 is computed against our own exact FAISS search, from true
   distances recomputed in float64; a returned vector counts if it is no
   farther than the true 10th neighbour (so ties are not mistakes).
+* The prose numbers in `report/template.html` were written from the full run
+  in `../results/`; every table, figure and the numbers marked `{{num:...}}`
+  are regenerated from the result files.
 * QPS: one query per `search` call, `faiss.omp_set_num_threads(1)` plus
   `threadpoolctl` limiting BLAS to one thread, 50 warm-up queries, median of
-  3 repeats over the timed queries. CPU-time/wall-time is recorded to confirm
+  3 repeats over the timed queries (each repeat cycles through them for at
+  least 0.5 s). CPU-time/wall-time is recorded to confirm
   single-thread execution. Index builds use all cores.
 * Index size is the length of `faiss.serialize_index`.
+* The PDF is printed from HTML with headless Edge/Chrome (`BROWSER=...` to
+  choose another Chromium browser); without one, open the generated
+  `report.html` and print it.
 
 ## Machine
 
-MACHINE_LINE
+Intel Core Ultra 7 155U (12 cores / 14 threads), 32 GB RAM, Windows 11 Home
+(10.0.26300), laptop on mains power. Python 3.12.4, faiss-cpu 1.15.0,
+NumPy 2.3.4. Shell: Git Bash.
 
 Library versions are pinned in `requirements.txt` and recorded in
 `results/raw/part1_summary.json`.

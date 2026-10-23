@@ -31,14 +31,16 @@ N_QUERIES_SPLIT = 5000     # first 5000 queries = tune, last 5000 = test
 
 if QUICK:
     N_BASE = 100_000       # first 100K base vectors
+    N_EVAL_HALF = 2000     # queries used from each half (tune / test) for recall
     N_TIME_TEST = 300      # test queries used in the timed loop
     N_TIME_TUNE = 100      # tune queries used for (cheap) timing during selection
     N_REPEATS = 3
     N_SYNTH = 50_000
-    STOP_RECALL = 0.995    # sweeps stop once tune recall reaches this
-    MIN_REPEAT_S = 0.2     # a timed repeat cycles the queries for at least this long
+    STOP_RECALL = 0.99     # sweeps stop once tune recall reaches this
+    MIN_REPEAT_S = 0.1     # a timed repeat cycles the queries for at least this long
 else:
     N_BASE = None          # all vectors
+    N_EVAL_HALF = 5000     # all 5,000 queries of each half
     N_TIME_TEST = 5000     # all test queries are timed
     N_TIME_TUNE = 1000
     N_REPEATS = 3

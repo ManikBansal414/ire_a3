@@ -41,7 +41,15 @@ def load_raw():
         f = config.RAW_DIR / f"{p}.csv"
         if f.exists():
             frames[p] = pd.read_csv(f)
-    allrows = pd.concat(frames.values(), ignore_index=True, sort=False)
+    extra = []
+    diff = config.RAW_DIR / "dataset_difficulty.json"
+    if diff.exists():  # relative contrast / LID of the real datasets (quoted in the report)
+        with open(diff) as f:
+            for ds, v in json.load(f).items():
+                extra.append({"part": "difficulty", "dataset": ds, "n_base": v["n_base"],
+                              "relative_contrast_median": v["relative_contrast_median"],
+                              "lid_mle_median": v["lid_mle_median"]})
+    allrows = pd.concat(list(frames.values()) + [pd.DataFrame(extra)], ignore_index=True, sort=False)
     allrows.to_csv(config.RESULTS_DIR / "results.csv", index=False)
     return frames
 
