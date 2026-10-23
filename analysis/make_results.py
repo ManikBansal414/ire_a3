@@ -130,7 +130,7 @@ def part2(p1, p2):
         ax.set_xlabel("recall@10 (test half)")
         ax.set_title(f"{ds.upper() if ds == 'sift' else 'GloVe-100'} "
                      f"(N={int(d.n_base.iloc[0]):,})", color=INK, fontsize=9)
-        ax.set_ylabel("queries / second (1 thread, 1 query at a time)")
+        ax.set_ylabel("QPS (1 thread, 1 query per call)")
 
         for kind in INDEX_ORDER:
             sub = d[d["index"] == kind]
@@ -140,11 +140,13 @@ def part2(p1, p2):
                 if s is None:
                     row[f"QPS @{t:.2f}"] = f"not reached (max {sub.recall_test.max():.3f})"
                     row[f"setting @{t:.2f}"] = ""
+                    row[f"dist/query @{t:.2f}"] = ""
                 else:
                     row[f"QPS @{t:.2f}"] = f"{s.qps_test:,.0f}"
                     row[f"setting @{t:.2f}"] = (f"{fmt_params(s.build_params)}, "
                                                f"{s.param_name}={int(s.param_value)} "
                                                f"(test R={s.recall_test:.3f})")
+                    row[f"dist/query @{t:.2f}"] = f"{s.ndis_per_query:,.0f}"
             qps_rows.append(row)
             s = select(sub, 0.95)
             if s is None:  # report the build that got closest, flagged
@@ -162,7 +164,8 @@ def part2(p1, p2):
         if ex is not None:
             qps_rows.append({"dataset": ds, "index": "Exact (flat)",
                              "QPS @0.90": f"{ex.qps_test:,.1f}", "QPS @0.95": f"{ex.qps_test:,.1f}",
-                             "setting @0.90": "recall 1.0", "setting @0.95": "recall 1.0"})
+                             "setting @0.90": "recall 1.0", "setting @0.95": "recall 1.0",
+                             "dist/query @0.90": f"{ex.n_base:,}", "dist/query @0.95": f"{ex.n_base:,}"})
             cost_rows.append({"dataset": ds, "index": "Exact (flat)", "build": "-",
                               "build time (s)": round(ex.build_time_s, 1), "of which training (s)": 0,
                               "index size (MB)": round(ex.index_bytes / 2 ** 20, 1),
@@ -199,7 +202,7 @@ def part2(p1, p2):
 # ---------------------------------------------------------------- Part 3
 def part3(p2, p3):
     ms = sorted(p3.m.unique())
-    shades = dict(zip(ms, BLUES[1:][-len(ms):] if len(ms) <= 5 else BLUES))
+    shades = dict(zip(ms, ["#a9cbf0", "#5b9be0", "#1f63b8", "#0b2a52", "#061a33"]))
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.8), gridspec_kw={"width_ratios": [1.5, 1]})
     ax = axes[0]
     for m in ms:
@@ -210,7 +213,7 @@ def part3(p2, p3):
     flat = p2[(p2.dataset == "sift") & (p2["index"] == "IVF-Flat")]
     nl = json.loads(p3.build_params.iloc[0])["nlist"]
     flat = flat[flat.build_params == json.dumps({"nlist": nl})].sort_values("param_value")
-    ax.plot(flat.recall_test, flat.qps_test, "-", color=COLORS["IVF-Flat"], lw=1.2,
+    ax.plot(flat.recall_test, flat.qps_test, "-", color=COLORS["IVF-Flat"], lw=2.2,
             label=f"IVF-Flat nlist={nl}")
     ax.set_yscale("log")
     ax.set_xlabel("recall@10 (test half)")
@@ -222,6 +225,8 @@ def part3(p2, p3):
     for m in ms:
         for rr in (False, True):
             sub = p3[(p3.m == m) & (p3.rerank == rr)]
+            if sub.empty:
+                continue
             row = {"m (bytes/code)": m, "re-rank top-100": "yes" if rr else "no",
                    "bytes / vector": round(sub.bytes_per_vector.iloc[0], 1),
                    "build (s)": round(sub.build_time_s.iloc[0], 1),
@@ -245,6 +250,17 @@ def part3(p2, p3):
         sub = tbl[tbl["re-rank top-100"] == ("yes" if rr else "no")]
         ax.plot(sub["bytes / vector"], sub["max recall"], "-" if rr else "--", marker=mk,
                 color=COLORS["IVF-PQ+rerank" if rr else "IVF-PQ"], label=f"IVF-PQ {lab}")
+    lab_rows = tbl[(tbl["re-rank top-100"] == "no") |
+                   ((tbl["re-rank top-100"] == "yes") & (tbl["max recall"] < 0.99))]
+    top = tbl[(tbl["re-rank top-100"] == "yes") & (tbl["max recall"] >= 0.99)]
+    if len(top):
+        ax.annotate("m=" + ",".join(str(v) for v in top["m (bytes/code)"]),
+                    (top["bytes / vector"].min(), 1.0), textcoords="offset points", xytext=(-8, -1),
+                    ha="right", fontsize=6.5, color=MUTED)
+    for _, r in lab_rows.iterrows():
+        ax.annotate(f"m={r['m (bytes/code)']}", (r["bytes / vector"], r["max recall"]),
+                    textcoords="offset points", xytext=(-4 if r["re-rank top-100"] == "yes" else 4, -3),
+                    ha="right" if r["re-rank top-100"] == "yes" else "left", fontsize=6.5, color=MUTED)
     ax.plot([fr["bytes / vector"]], [fr["max recall"]], "D", color=COLORS["IVF-Flat"], label="IVF-Flat")
     ax.set_xscale("log")
     ax.set_xlabel("index bytes per vector (log)")
@@ -258,6 +274,9 @@ def part3(p2, p3):
 
 # ---------------------------------------------------------------- Part 4
 def part4(p4):
+    if not (config.RAW_DIR / "part4_summary.json").exists():
+        print("part4 not finished; skipping")
+        return
     with open(config.RAW_DIR / "part4_summary.json") as f:
         summ = json.load(f)
     labels = [k for k in summ if not k.endswith("control")]

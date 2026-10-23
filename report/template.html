@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>A3 ANN Benchmark Report</title>
+<style>/*CSS*/</style></head>
+<body>
+<h1>Assignment 3: Benchmarking Approximate Nearest Neighbour Search</h1>
+<div class="sub">CS4.406 Information Retrieval &amp; Extraction · Manik Bansal · 2024101084 ·
+Machine: {{num:machine}}, 32 GB RAM (laptop, on mains power) · {{num:versions}}</div>
+
+<h2>Setup</h2>
+<p><b>Data.</b> SIFT-1M (128-d, Euclidean) and GloVe-100 (1,183,514 × 100, angular) from ann-benchmarks.
+GloVe vectors and queries are L2-normalised, so Euclidean distance ranks exactly like angular distance
+(‖a−b‖² = 2 − 2cos). Queries 0–4,999 are the <i>tune</i> half and 5,000–9,999 the <i>test</i> half.
+<b>Selection rule.</b> Every "at recall X" number is chosen on the tune half only: per build, the smallest
+efSearch/nprobe whose tune recall ≥ X; then the build with the highest tune QPS. Tables report that
+choice's test-half recall and QPS. <b>Recall@10</b> is my own function: a returned id is a hit if its true
+distance (recomputed in float64 from the raw vectors, never the index's approximate distance) is ≤ the true
+10th-neighbour distance, so ties at rank 10 are not mistakes; duplicates and −1 padding are handled
+(13 unit tests). <b>Timing.</b> One query per <code>search</code> call, FAISS and BLAS pinned to one thread,
+50 warm-up queries, then 3 repeats over all 5,000 test queries (each repeat cycles the queries for ≥ 0.5 s);
+the median is reported. Builds use all {{num:threads}} hardware threads. Index size = bytes of
+<code>faiss.serialize_index</code>. Builds: HNSW M ∈ {8,16,32} (efConstruction 200); IVF nlist ∈ {1024, 4096};
+IVF-PQ m = d/4 sub-quantisers × 8 bits (32 B/code SIFT, 25 B/code GloVe).</p>
+
+<h2>Part 1: Exact baseline</h2>
+<div class="cap">Table 1. Exact search (FAISS IndexFlatL2), test half, and agreement with the neighbours stored in the file.</div>
+{{table:part1_exact}}
+<p><b>Agreement with the file.</b> On SIFT our exact top-10 has the same id set as the stored neighbours for
+{{num:sift_same_set}} of queries; all {{num:sift_ndiff}} differing queries are ties at rank 10 (the stored lists
+score tie-aware recall {{num:sift_stored_recall}} against ours, and the 10th distances are identical).
+On GloVe, after normalisation, the id sets agree for {{num:glove_same_set}} of queries, and distances agree to float precision.</p>
+<p><b>One-at-a-time vs batch.</b> A single query is a matrix–vector product: to answer it the CPU must stream
+the whole 512 MB (SIFT) database from RAM and does only one multiply-add per float loaded, so it is limited by
+memory bandwidth ({{num:sift_one_ms}} ms per query). A batch turns the work into a matrix–matrix product (BLAS GEMM):
+each block of database vectors brought into cache is reused against many queries, so the same single core
+answers {{num:sift_batch_speedup}}× more queries per second (SIFT; {{num:glove_batch_speedup}}× on GloVe).
+Adding all threads helps only a little more ({{num:sift_batchall_speedup}}× over one-at-a-time), because the
+laptop's shared memory bandwidth, not arithmetic, is again the limit. Interactive search sees one query at a time,
+which is why all QPS numbers below use that mode.</p>
+
+<h2>Part 2: Three indexes on two datasets</h2>
+<figure>{{fig:part2_recall_vs_qps}}
+<figcaption>Figure 1. Recall@10 vs single-thread QPS on the test half. Lines are the Pareto frontier over all build settings
+of each index; faint dots are every measured point; dashed line is exact search. Dotted verticals mark 0.90 and 0.95.</figcaption></figure>
+<div class="cap">Table 2. QPS at recall 0.90 and 0.95 (setting chosen on the tune half; test recall in brackets) and distance
+computations per query counted by FAISS.</div>
+{{table:part2_qps_at_recall}}
+<div class="cap">Table 3. Build time (all threads), index size and bytes per vector for the build chosen at recall 0.95.</div>
+{{table:part2_cost_at_095}}
+<p><b>Why IVF-PQ never reaches high recall.</b> Plain IVF-PQ stops at recall 0.74 (SIFT) and 0.62 (GloVe) however many lists are
+probed (Fig. 1, the green curves turn vertical). nprobe only controls which vectors are <i>considered</i>; the final top-10 is
+ranked by PQ's approximate distances, and with 4 dimensions per 8-bit sub-quantiser the quantisation error is larger than
+the gaps between the 10th and nearby neighbours, so true neighbours are found but mis-ranked. GloVe is worse because its
+neighbour distances are packed closer together (lower relative contrast), so the same error reorders more of them. Part 3
+shows that exact re-ranking of a short candidate list removes this ceiling. HNSW and IVF-Flat reach recall ≥ 0.99 on both datasets.</p>
+
+<h2>Part 3: Compression — PQ size and exact re-ranking (SIFT-1M)</h2>
+<p><b>Hypothesis (committed before the run, <code>hypothesis.md</code>).</b> (1) The plain IVF-PQ recall ceiling rises with m
+(≈0.3/0.5/0.75/0.9 for m = 8/16/32/64) but never reaches 0.95; (2) re-ranking the top 100 with exact distances removes the
+ceiling for m ≥ 16 but not for m = 8; (3) re-ranking costs &lt; 25% speed at a fixed nprobe, and re-ranked m = 16/32
+beats IVF-Flat at recall 0.95; (4) re-ranking gives back almost all of PQ's memory saving.
+<b>Setup.</b> nlist = 1024 fixed, 8-bit codes, m ∈ {8,16,32,64}, each plain and with <code>IndexRefineFlat</code> (k_factor 10 → 100
+candidates); nprobe swept as in Part 2. Only m and re-ranking change.</p>
+<figure>{{fig:part3_compression}}
+<figcaption>Figure 2. Left: recall vs QPS for each m, plain (dashed) and re-ranked (solid), with IVF-Flat at the same nlist.
+Right: index bytes per vector vs the best recall each variant reaches.</figcaption></figure>
+<div class="cap">Table 4. Part 3 summary (test half; settings chosen on the tune half).</div>
+{{table:part3_compression}}
+<p><b>Results.</b> (1) Ceilings were 0.38/0.57/0.73/0.88: close to the prediction, and none reach 0.95. Each doubling of m
+halves the dimensions per sub-quantiser and shrinks the distance error, but even 64-byte codes mis-rank about one in eight
+top-10 neighbours. (2) Re-ranking lifts the ceiling to 0.979/0.999/1.000 for m = 16/32/64 and only to 0.858 for m = 8. For
+m ≥ 32 the re-ranked recall at every nprobe equals IVF-Flat's to three decimals: the true neighbours are always inside the
+PQ top-100, so recall is limited only by which lists are probed. With m = 8 the codes are so coarse that some true
+neighbours rank below 100th among the candidates and are never re-scored. (3) At a fixed nprobe re-ranking costs only 3–18%
+(100 extra exact distances against 10<sup>4</sup>–10<sup>5</sup> code scans). At recall 0.95, re-ranked m = 16 (1,933 QPS) and
+m = 32 (1,396) beat IVF-Flat (1,096 at the same nlist), because they scan 16–32-byte codes instead of 512-byte vectors.
+<i>Not predicted:</i> re-ranked m = 64 is <i>slower</i> than IVF-Flat (794 QPS). A PQ distance costs m scalar table lookups per
+code, while a float distance is a few SIMD fused multiply-adds, so beyond ~32 bytes scanning codes stops being cheaper than scanning
+raw floats. (4) Memory goes from 24.7 to 536.7 bytes/vector for m = 16: re-ranking needs the raw vectors, so the PQ saving
+survives only if those live on disk/SSD.</p>
+<p class="verdict"><b>Verdict:</b> hypotheses 1, 2 and 4 supported; 3 supported for m = 16/32 but wrong for m = 64.</p>
+
+PART4_SECTION
+
+PART5_SECTION
+</body></html>

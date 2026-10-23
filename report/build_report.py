@@ -33,6 +33,21 @@ BROWSERS = [
 ]
 
 
+def cpu_name():
+    """Marketing name of the CPU (platform.processor() is vague on Windows)."""
+    cmds = [["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor).Name"],
+            ["sh", "-c", "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2"],
+            ["sysctl", "-n", "machdep.cpu.brand_string"]]
+    for c in cmds:
+        try:
+            out = subprocess.run(c, capture_output=True, text=True, timeout=20).stdout.strip()
+            if out:
+                return out
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return ""
+
+
 def numbers():
     """Every number quoted in the prose, keyed by name."""
     T = config.TABLE_DIR
@@ -41,7 +56,7 @@ def numbers():
     with open(R / "part1_summary.json") as f:
         p1 = json.load(f)
     m = p1["machine"]
-    n["machine"] = f"{m['processor']}; {m['platform']}"
+    n["machine"] = f"{cpu_name() or m['processor']}; {m['platform']}"
     n["versions"] = f"Python {m['python']}, FAISS {m['faiss']}, NumPy {m['numpy']}"
     n["threads"] = m["omp_max_threads"]
     for ds in ["sift", "glove"]:
