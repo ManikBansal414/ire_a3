@@ -64,3 +64,23 @@ timing as Part 2. Generator is seeded.
 4. *Control:* the seed replicate of d_int = 16 differs from the original by
    less than 10% in QPS at recall 0.95 and by less than 0.01 in recall at a
    fixed parameter.
+
+---
+
+# Outcomes (added after the runs; the text above is unchanged since commit "Hypotheses for Part 3 ...")
+
+## Part 3
+* (1) Plain IVF-PQ ceilings 0.382 / 0.572 / 0.728 / 0.876 for m = 8/16/32/64 — **supported** (none reach 0.95).
+* (2) Re-ranking top-100 ceilings 0.858 / 0.979 / 0.999 / 1.000 — **supported** (m >= 16 pass 0.95, m = 8 does not).
+  For m >= 32 recall at each nprobe equals IVF-Flat's.
+* (3) Re-ranking costs 3–18% at fixed nprobe — supported. At recall 0.95 re-ranked m = 16 (1,933 QPS) and
+  m = 32 (1,396) beat IVF-Flat (1,096) — supported; but m = 64 (794 QPS) is slower than IVF-Flat — **not predicted**.
+* (4) Memory 24.7 -> 536.7 bytes/vector (m = 16) — **supported**.
+
+## Part 4
+* (1) Relative contrast 5.37 / 2.67 / 1.86 / 1.50 / 1.31 for d_int = 8/16/32/64/128 — **supported**.
+* (2) Both degrade; IVF-Flat needs nprobe 256 of 512 (50%) at d_int = 128 — supported. But HNSW degrades
+  *faster* (efSearch 16 -> 1536, x75 distance computations) and is slower than IVF-Flat from d_int = 64; at
+  d_int = 128 it does not reach 0.95 before costing more than exact search — **refuted**.
+* (3) d_int = 8: efSearch 16 (<= 32, supported), nprobe 12 (predicted <= 8, **not supported**).
+* (4) Control (d_int = 16, new seed): same efSearch/nprobe, recall within 0.007, QPS at 0.95 within 1–2% — **supported**.

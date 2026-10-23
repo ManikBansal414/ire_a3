@@ -19,3 +19,4 @@ table.tbl td { border-bottom: 1px solid #e4e3df; padding: 1px 4px; }
 .verdict { background: #f4f3ef; padding: 3px 6px; border-left: 3px solid #2a78d6; margin: 3px 0 5px 0; }
 .pb { break-before: page; }
 code { font-size: 8pt; }
+.tblock { break-inside: avoid; }

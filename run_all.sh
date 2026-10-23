@@ -32,6 +32,7 @@ step() {  # step <name> <command...>
 step data    $PY scripts/download_data.py
 step tests   $PY -m pytest -q tests
 step part1   $PY experiments/part1_exact.py
+step difficulty $PY experiments/dataset_difficulty.py
 step part2   $PY experiments/part2_benchmark.py
 step part3   $PY experiments/part3_compression.py
 step part4   $PY experiments/part4_intrinsic_dim.py

@@ -280,8 +280,8 @@ def part4(p4):
     with open(config.RAW_DIR / "part4_summary.json") as f:
         summ = json.load(f)
     labels = [k for k in summ if not k.endswith("control")]
-    shade = dict(zip(labels, BLUES[1:]))
-    fig, axes = plt.subplots(1, 3, figsize=(7.4, 2.6))
+    shade = dict(zip(labels, ["#a9cbf0", "#5b9be0", "#1f63b8", "#0f3f80", "#061a33"]))
+    fig, axes = plt.subplots(1, 3, figsize=(7.4, 2.7))
     for ax, kind in zip(axes[:2], ["HNSW", "IVF-Flat"]):
         for lab in labels + ["d16-control"]:
             sub = p4[(p4.setting == lab) & (p4["index"] == kind)].sort_values("param_value")
@@ -313,32 +313,37 @@ def part4(p4):
             if s is None:
                 r[f"{kind} {key}@0.95"] = "not reached"
                 r[f"{kind} QPS@0.95"] = "–"
-                r[f"{kind} dist/query@0.95"] = np.nan
+                r[f"{kind} dist/query@0.95"] = "–"
             else:
                 r[f"{kind} {key}@0.95"] = int(s.param_value)
-                r[f"{kind} QPS@0.95"] = round(s.qps_test)
-                r[f"{kind} dist/query@0.95"] = round(s.ndis_per_query)
+                r[f"{kind} QPS@0.95"] = int(round(s.qps_test))
+                r[f"{kind} dist/query@0.95"] = int(round(s.ndis_per_query))
         rows.append(r)
     tbl = pd.DataFrame(rows)
     write_table("part4_intrinsic_dim", tbl)
 
     ax = axes[2]
     main = tbl[~tbl.setting.str.endswith("control")]
-    n = int(p4.n_base.iloc[0])
+    ctrl = tbl[tbl.setting.str.endswith("control")]
     for kind in ["HNSW", "IVF-Flat"]:
-        y = pd.to_numeric(main[f"{kind} dist/query@0.95"], errors="coerce")
-        ax.plot(main.d_int, y / n, "-o", color=COLORS[kind], label=kind)
-        c = tbl[tbl.setting.str.endswith("control")]
-        ax.plot(c.d_int, pd.to_numeric(c[f"{kind} dist/query@0.95"], errors="coerce") / n, "x",
-                color=COLORS[kind], ms=6)
+        y = pd.to_numeric(main[f"{kind} QPS@0.95"], errors="coerce")
+        ax.plot(main.d_int, y, "-o", color=COLORS[kind], label=kind)
+        ax.plot(ctrl.d_int, pd.to_numeric(ctrl[f"{kind} QPS@0.95"], errors="coerce"), "x",
+                color=COLORS[kind], ms=7, mew=1.5)
+        for _, r in main[y.isna()].iterrows():
+            ax.annotate(f"{kind}: 0.95 not\nreached before\nexact cost", (r.d_int, 1000 / r["exact ms/q"]),
+                        textcoords="offset points", xytext=(-4, 14), ha="right", fontsize=6,
+                        color=COLORS[kind])
+    ax.plot(main.d_int, 1000 / main["exact ms/q"], "--", color=COLORS["Exact"], lw=1.2, label="Exact")
     ax.set_xscale("log", base=2)
     ax.set_yscale("log")
     ax.set_xticks(main.d_int)
-    ax.set_xticklabels(main.d_int)
-    ax.set_xlabel("intrinsic dimension d_int (ambient 128)")
-    ax.set_ylabel("fraction of base scanned for recall 0.95")
-    ax.set_title("work needed (x = control)", color=INK, fontsize=9)
-    ax.legend(fontsize=6.5, loc="upper left")
+    ax.set_xticklabels([f"{d}\n({rc:.1f})" for d, rc in zip(main.d_int, main["relative contrast"])],
+                       fontsize=7)
+    ax.set_xlabel("d_int (relative contrast)")
+    ax.set_ylabel("QPS at recall 0.95")
+    ax.set_title("cost of recall 0.95 (x = control)", color=INK, fontsize=9)
+    ax.legend(fontsize=6.5, loc="upper right")
     fig.tight_layout()
     fig.savefig(config.FIG_DIR / "part4_intrinsic_dim.png")
     plt.close(fig)

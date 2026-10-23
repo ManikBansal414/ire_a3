@@ -85,6 +85,11 @@ def numbers():
     n["tune_test_diff_max"] = f"{bc['test_minus_tune_recall_absmax']:.4f}"
     n["min_ms_part2"] = f"{1000 * bc['ms_per_query_min_part2']:.0f}"
 
+    with open(R / "dataset_difficulty.json") as f:
+        dd = json.load(f)
+    for ds in ["sift", "glove"]:
+        n[f"{ds}_rc"] = f"{dd[ds]['relative_contrast_median']:.2f}"
+        n[f"{ds}_lid"] = f"{dd[ds]['lid_mle_median']:.0f}"
     q = pd.read_csv(T / "part2_qps_at_recall.csv")
     for _, r in q.iterrows():
         key = f"{r.dataset}_{r['index'].split(' ')[0].replace('-', '').lower()}"
