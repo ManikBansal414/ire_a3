@@ -72,7 +72,8 @@ def main():
         row = base_row("part1", name, xb, built, q)
 
         with single_thread():
-            one = time_one_at_a_time(built.index, q.time_test, K, config.N_REPEATS)
+            one = time_one_at_a_time(built.index, q.time_test, K, config.N_REPEATS,
+                                     min_seconds=config.MIN_REPEAT_S)
             batch1 = time_batch(built.index, q.test, K, config.N_REPEATS)
         batch_all = time_batch(built.index, q.test, K, config.N_REPEATS)
         n_t = len(q.time_test)
@@ -81,7 +82,7 @@ def main():
         rec.add(**row, **common, mode="one-at-a-time, 1 thread", recall_timed_subset=r_one,
                 qps_test=one["qps"], ms_per_query=one["ms_per_query"],
                 qps_reps=";".join(f"{x:.2f}" for x in one["qps_reps"]),
-                cpu_wall_ratio=one["cpu_wall_ratio"])
+                cpu_wall_ratio=one["cpu_wall_ratio"], repeat_seconds=one["repeat_seconds"])
         rec.add(**row, **common, mode="batch, 1 thread", qps_test=batch1["qps"],
                 ms_per_query=batch1["ms_per_query"],
                 qps_reps=";".join(f"{x:.2f}" for x in batch1["qps_reps"]))

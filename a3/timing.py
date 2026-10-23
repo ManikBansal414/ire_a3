@@ -20,33 +20,43 @@ def single_thread():
         faiss.omp_set_num_threads(old)
 
 
-def time_one_at_a_time(index, queries, k, repeats, warmup=50):
+def time_one_at_a_time(index, queries, k, repeats, warmup=50, min_seconds=0.5):
     """Send queries one by one to index.search; return ids and timing stats.
 
-    Every repeat runs the full query list and stores the ids (so each repeat
-    does identical work). Wall time and process CPU time are both recorded;
-    cpu/wall close to 1.0 confirms that only one core was busy.
+    Each repeat runs the whole query list, and keeps cycling through it until
+    at least min_seconds have passed (fast indexes finish 5,000 queries in
+    ~0.1 s, too short to time reliably on a laptop). QPS of a repeat = queries
+    answered / wall time; the median over repeats is reported. Process CPU
+    time is recorded too: cpu/wall close to 1.0 confirms one busy core.
     """
     rows = [queries[i:i + 1] for i in range(len(queries))]
     for r in rows[:warmup]:
         index.search(r, k)
     ids = np.empty((len(rows), k), dtype=np.int64)
-    walls, cpus = [], []
+    rates, ratios, walls = [], [], []
     for _ in range(repeats):
+        done = 0
         c0 = time.process_time()
         t0 = time.perf_counter()
-        for i, r in enumerate(rows):
-            ids[i] = index.search(r, k)[1][0]
-        walls.append(time.perf_counter() - t0)
-        cpus.append(time.process_time() - c0)
-    n = len(rows)
-    med = statistics.median(walls)
+        while True:
+            for i, r in enumerate(rows):
+                ids[i] = index.search(r, k)[1][0]
+            done += len(rows)
+            wall = time.perf_counter() - t0
+            if wall >= min_seconds:
+                break
+        cpu = time.process_time() - c0
+        rates.append(done / wall)
+        ratios.append(cpu / wall)
+        walls.append(wall)
+    qps = statistics.median(rates)
     return {
         "ids": ids,
-        "qps": n / med,
-        "ms_per_query": 1000 * med / n,
-        "qps_reps": [n / w for w in walls],
-        "cpu_wall_ratio": float(np.median(np.array(cpus) / np.array(walls))),
+        "qps": qps,
+        "ms_per_query": 1000 / qps,
+        "qps_reps": rates,
+        "cpu_wall_ratio": float(np.median(ratios)),
+        "repeat_seconds": float(np.median(walls)),
     }
 
 

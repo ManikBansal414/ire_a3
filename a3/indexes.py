@@ -8,6 +8,7 @@ import numpy as np
 from . import config
 
 HNSW_EF_CONSTRUCTION = 200
+PQ_POINTS_PER_CENTROID = 128
 
 
 class Built:
@@ -34,6 +35,12 @@ class Built:
 
     def nbytes(self):
         return int(faiss.serialize_index(self.index).nbytes)
+
+
+def nlist_values(n):
+    """r and 4r, with r = sqrt(n) rounded to a power of two."""
+    r = 2 ** int(round(np.log2(np.sqrt(n))))
+    return [r, 4 * r]
 
 
 def train_sample(xb, nlist, seed=config.SEED, per_centroid=64):
@@ -83,6 +90,9 @@ def build_ivfpq(xb, nlist, m, nbits=8, rerank=False, k_factor=10):
     t0 = time.perf_counter()
     quant = faiss.IndexFlatL2(d)
     ivfpq = faiss.IndexIVFPQ(quant, d, nlist, m, nbits)
+    # PQ codebooks: 128 training points per code-centroid (32,768 vectors) is
+    # plenty and ~4x cheaper than the FAISS default of 256.
+    ivfpq.pq.cp.max_points_per_centroid = PQ_POINTS_PER_CENTROID
     ivfpq.train(train_sample(xb, nlist))
     t_train = time.perf_counter() - t0
     params = {"nlist": nlist, "m": m, "nbits": nbits}

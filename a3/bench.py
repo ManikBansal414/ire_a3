@@ -36,6 +36,15 @@ def ground_truth(tag, xb, xq, k=config.K):
     return D, I
 
 
+def exact_ms(xb, q):
+    """Exact one-at-a-time cost on 200 test queries: the cap for sweeps."""
+    from .indexes import build_exact
+    e = build_exact(xb)
+    with single_thread():
+        t = time_one_at_a_time(e.index, q.test[:200], config.K, repeats=1, warmup=10)
+    return t["ms_per_query"]
+
+
 class Queries:
     """Tune / test split with ground truth and precomputed k-th distances."""
 
@@ -96,17 +105,33 @@ def base_row(part, dataset, xb, built, q):
     }
 
 
+def distance_computations(built, n, k):
+    """Distance computations counted by FAISS since the last stats reset
+    (vector-to-query distances; IVF also scans nlist centroids per query, and
+    re-ranking adds k_factor*k exact distances, which are not included)."""
+    if built.kind == "HNSW":
+        return faiss.cvar.hnsw_stats.ndis
+    if built.ivf is not None:
+        return faiss.cvar.indexIVF_stats.ndis
+    return float("nan")
+
+
 def evaluate_point(built, xb, q, value, k=config.K):
     """Recall on tune and test halves + single-thread one-at-a-time timing."""
     built.set_search_param(value)
     # recall on the full halves (batched, all threads: same results, just faster)
     _, I_tune = built.index.search(q.tune, k)
+    faiss.cvar.hnsw_stats.reset()
+    faiss.cvar.indexIVF_stats.reset()
     _, I_test = built.index.search(q.test, k)
+    ndis = distance_computations(built, len(xb), k) / len(q.test)
     r_tune = recall_at_k(I_tune, xb, q.tune, q.gt_tune, k, q.kth_tune)
     r_test = recall_at_k(I_test, xb, q.test, q.gt_test, k, q.kth_test)
     with single_thread():
-        t_tune = time_one_at_a_time(built.index, q.time_tune, k, repeats=1)
-        t_test = time_one_at_a_time(built.index, q.time_test, k, repeats=config.N_REPEATS)
+        t_tune = time_one_at_a_time(built.index, q.time_tune, k, repeats=1,
+                                    min_seconds=config.MIN_REPEAT_S / 4)
+        t_test = time_one_at_a_time(built.index, q.time_test, k, repeats=config.N_REPEATS,
+                                    min_seconds=config.MIN_REPEAT_S)
     n_t = len(q.time_test)
     r_timed = recall_at_k(t_test["ids"], xb, q.time_test, q.gt_test[:n_t], k, q.kth_test[:n_t])
     return {
@@ -120,6 +145,8 @@ def evaluate_point(built, xb, q, value, k=config.K):
         "ms_per_query": t_test["ms_per_query"],
         "qps_reps": ";".join(f"{x:.1f}" for x in t_test["qps_reps"]),
         "cpu_wall_ratio": round(t_test["cpu_wall_ratio"], 3),
+        "repeat_seconds": round(t_test["repeat_seconds"], 3),
+        "ndis_per_query": ndis,
     }
 
 

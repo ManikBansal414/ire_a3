@@ -1,0 +1,80 @@
+# Assignment 3 — Benchmarking approximate nearest neighbour search
+
+HNSW, IVF-Flat and IVF-PQ (FAISS) on SIFT-1M and GloVe-100, plus one
+experiment on the standard data (Part 3: PQ compression and re-ranking) and
+one on generated data (Part 4: intrinsic dimension).
+
+## Layout
+
+```
+a3/            library code
+  config.py      paths, full/quick mode settings
+  data.py        HDF5 loading, GloVe normalisation, tune/test query split
+  recall.py      recall@10 (ties at the 10th neighbour are not mistakes)
+  timing.py      single-thread, one-query-at-a-time timing, median of repeats
+  indexes.py     index builders (exact, HNSW, IVF-Flat, IVF-PQ, IVF-PQ+rerank)
+  bench.py       ground truth, parameter sweeps, result rows
+  synth.py       seeded generator for Part 4
+experiments/   one script per part (part1_exact.py ... part4_intrinsic_dim.py)
+analysis/      make_results.py: results.csv, figures, tables
+report/        template.html + build_report.py -> report.pdf
+tests/         unit tests (recall function, generator)
+scripts/       download_data.py
+hypothesis.md  Part 3 and Part 4 hypotheses (committed before the runs)
+run_all.sh     one-command reproduction
+```
+
+## Setup
+
+```
+pip install -r requirements.txt
+```
+
+The two datasets (`sift-128-euclidean.hdf5`, `glove-100-angular.hdf5`, about
+1 GB together) are downloaded from ann-benchmarks.com into `../data/` by the
+first step of `run_all.sh` if they are not there already. Set `A3_DATA` to use
+another folder.
+
+## Reproduce
+
+Run from inside `code/` with bash (Git Bash on Windows works):
+
+```
+bash run_all.sh            # full run: every number, figure and table in the report
+bash run_all.sh --quick    # same pipeline on a small subset, < 15 min on a laptop
+bash run_all.sh --only part3   # a single step (data, tests, part1..part4, analyse, report)
+```
+
+* **Full run** writes `../results/results.csv`, `../results/figures/`,
+  `../results/tables/` and `../report.pdf`. It took about
+  FULL_RUNTIME on the machine below, almost all of it single-thread query
+  timing (5,000 test queries x 3 repeats for every point of every sweep).
+* **Quick run** uses the first 100,000 base vectors of each dataset (ground
+  truth recomputed for that subset), 50,000 synthetic vectors in Part 4, times
+  500 of the test queries instead of 5,000, and stops sweeps at recall 0.995
+  instead of 0.999. Outputs go to `../results_quick/` so they never overwrite
+  the full results. It took QUICK_RUNTIME here.
+
+Ground truth is cached in `../cache/` (delete it to recompute).
+
+## Method in brief
+
+* Queries 0–4,999 are the **tune** half and 5,000–9,999 the **test** half.
+  Every choice (which build, which efSearch/nprobe reaches a recall target)
+  is made from tune-half recall and tune-half timing; reported numbers are
+  test-half numbers.
+* Recall@10 is computed against our own exact FAISS search, from true
+  distances recomputed in float64; a returned vector counts if it is no
+  farther than the true 10th neighbour (so ties are not mistakes).
+* QPS: one query per `search` call, `faiss.omp_set_num_threads(1)` plus
+  `threadpoolctl` limiting BLAS to one thread, 50 warm-up queries, median of
+  3 repeats over the timed queries. CPU-time/wall-time is recorded to confirm
+  single-thread execution. Index builds use all cores.
+* Index size is the length of `faiss.serialize_index`.
+
+## Machine
+
+MACHINE_LINE
+
+Library versions are pinned in `requirements.txt` and recorded in
+`results/raw/part1_summary.json`.

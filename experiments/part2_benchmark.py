@@ -13,27 +13,11 @@ import gc
 import os
 import sys
 
-import numpy as np
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from a3 import config, data  # noqa: E402
-from a3.bench import Queries, Recorder, ground_truth, log, sweep  # noqa: E402
-from a3.indexes import (HNSW_EF, NPROBE, build_exact, build_hnsw, build_ivfflat,  # noqa: E402
-                        build_ivfpq)
-from a3.timing import single_thread, time_one_at_a_time  # noqa: E402
-
-
-def nlist_values(n):
-    r = 2 ** int(round(np.log2(np.sqrt(n))))
-    return [r, 4 * r]
-
-
-def exact_ms(xb, q):
-    """Exact one-at-a-time cost on a few test queries: the cap for sweeps."""
-    e = build_exact(xb)
-    with single_thread():
-        t = time_one_at_a_time(e.index, q.test[:200], config.K, repeats=1, warmup=10)
-    return t["ms_per_query"]
+from a3.bench import Queries, Recorder, exact_ms, ground_truth, log, sweep  # noqa: E402
+from a3.indexes import (HNSW_EF, NPROBE, build_hnsw, build_ivfflat,  # noqa: E402
+                        build_ivfpq, nlist_values)
 
 
 def main():
