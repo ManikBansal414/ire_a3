@@ -56,6 +56,15 @@ def load_raw():
                 extra.append({"part": "part1", "dataset": ds, "index": "Exact",
                               "mode": "empty search call (1-vector flat index), 1 thread",
                               "ms_per_query": us / 1000})
+    p4s = config.RAW_DIR / "part4_summary.json"
+    if p4s.exists():  # exact-search cost per synthetic setting (Table 5, Part 5 Q4)
+        with open(p4s) as f:
+            for lab, v in json.load(f).items():
+                extra.append({"part": "part4", "dataset": f"synth-{lab}", "index": "Exact",
+                              "setting": lab, "d_int": v["d_int"], "seed": v["seed"],
+                              "mode": "one-at-a-time, 1 thread, 200 test queries, 1 pass (sweep cap)",
+                              "ms_per_query": v["exact_ms_per_query"],
+                              "qps_test": 1000 / v["exact_ms_per_query"]})
     allrows = pd.concat(list(frames.values()) + [pd.DataFrame(extra)], ignore_index=True, sort=False)
     allrows.to_csv(config.RESULTS_DIR / "results.csv", index=False)
     return frames

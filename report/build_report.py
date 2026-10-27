@@ -62,6 +62,12 @@ def numbers():
     n["machine"] = f"{cpu_name() or m['processor']}; {m['platform']}"
     n["versions"] = f"Python {m['python']}, FAISS {m['faiss']}, NumPy {m['numpy']}"
     n["threads"] = m["omp_max_threads"]
+    p2 = pd.read_csv(R / "part2.csv")
+    n["nlist_set"] = ", ".join(str(v) for v in sorted(
+        {json.loads(b)["nlist"] for b in p2[p2["index"] == "IVF-Flat"].build_params}))
+    n["n_timed"] = f"{int(p2.n_timed_queries.iloc[0]):,}"
+    n["n_reps"] = int(p2.n_repeats.iloc[0])
+    n["min_rep_s"] = config.MIN_REPEAT_S
     for ds in ["sift", "glove"]:
         d = p1[ds]
         n[f"{ds}_one_qps"] = f"{d['one_at_a_time_qps']:.0f}"
@@ -246,6 +252,15 @@ def part3_numbers(R):
     for m in [16, 32, 64]:
         put(n, f"p3_q95_m{m}", lambda: f"{select(sub(m, True), 0.95).qps_test:,.0f}")
     put(n, "p3_q95_flat", lambda: f"{select(flat, 0.95).qps_test:,.0f}")
+
+    def beats_best_flat():
+        # re-ranked m that beat the best IVF-Flat of Part 2 (any nlist) at recall 0.95
+        best = select(p2[(p2.dataset == "sift") & (p2["index"] == "IVF-Flat")], 0.95).qps_test
+        ms = [m for m in [8, 16, 32, 64]
+              if select(sub(m, True), 0.95) is not None and select(sub(m, True), 0.95).qps_test > best]
+        return "m = " + "/".join(map(str, ms)) if ms else "none"
+
+    put(n, "p3_beats_best_flat", beats_best_flat)
     put(n, "p3_bpv_plain16", lambda: f"{sub(16, False).bytes_per_vector.iloc[0]:.1f}")
     put(n, "p3_bpv_rr16", lambda: f"{sub(16, True).bytes_per_vector.iloc[0]:.1f}")
     return n
@@ -294,6 +309,8 @@ def part4_numbers(R):
     put(n, "p4_np_frac_d128", lambda: f"{100 * v[-1].param_value / n['p4_nlist']:.0f}%")
     put(n, "p4_ivf_ndis_ratio", lambda: f"{v[-1].ndis_per_query / v[0].ndis_per_query:.0f}")
     put(n, "p4_ivf_drop", lambda: f"{v[0].qps_test / v[-1].qps_test:.0f}×")
+    put(n, "p4_ivf_drop_same", lambda: f"{v[0].qps_test / v[lab.index(h_ok[-1][0])].qps_test:.0f}×")
+    n["p4_per_ds"] = f"{N + 10_000:,}"  # base + 10,000 queries per generated dataset
     put(n, "p4_ivf_q_d128", lambda: f"{v[-1].qps_test:,.0f}")
     put(n, "p4_ivf_frac_d128", lambda: f"{100 * v[-1].ndis_per_query / N:.0f}%")
     put(n, "p4_ivf_q_d64", lambda: f"{v[3].qps_test:,.0f}")
@@ -303,8 +320,9 @@ def part4_numbers(R):
     put(n, "p4_ns_ivf", lambda: f"{1e9 / v[3].qps_test / v[3].ndis_per_query:.0f}")
     put(n, "p4_ratio_d16", lambda: ratio(h[1].qps_test, v[1].qps_test))
     # control vs original d16
-    a = p4[p4.setting == "d16"].set_index(["index", "param_value"])
-    b = p4[p4.setting == "d16-control"].set_index(["index", "param_value"])
+    ann = p4[p4["index"].isin(["HNSW", "IVF-Flat"])]  # exclude the exact-search rows
+    a = ann[ann.setting == "d16"].set_index(["index", "param_value"])
+    b = ann[ann.setting == "d16-control"].set_index(["index", "param_value"])
     j = a[["recall_test", "qps_test"]].join(b[["recall_test", "qps_test"]], rsuffix="_c", how="inner")
     put(n, "p4_ctrl_rec", lambda: f"{(j.recall_test - j.recall_test_c).abs().max():.3f}")
     put(n, "p4_ctrl_point_max", lambda: f"{100 * (j.qps_test / j.qps_test_c - 1).abs().max():.0f}%")

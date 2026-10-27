@@ -17,9 +17,9 @@ choice's test-half recall and QPS. <b>Recall@10</b> is my own function: a return
 distance (recomputed in float64 from the raw vectors, never the index's approximate distance) is ≤ the true
 10th-neighbour distance, so ties at rank 10 are not mistakes; duplicates and −1 padding are handled
 (13 unit tests). <b>Timing.</b> One query per <code>search</code> call, FAISS and BLAS pinned to one thread,
-50 warm-up queries, then 3 repeats over all 5,000 test queries (each repeat cycles the queries for ≥ 0.5 s);
+50 warm-up queries, then {{num:n_reps}} repeats over {{num:n_timed}} test queries (each repeat cycles the queries for ≥ {{num:min_rep_s}} s);
 the median is reported. Builds use all {{num:threads}} hardware threads. Index size = bytes of
-<code>faiss.serialize_index</code>. Builds: HNSW M ∈ {8,16,32} (efConstruction 200); IVF nlist ∈ {1024, 4096};
+<code>faiss.serialize_index</code>. Builds: HNSW M ∈ {8,16,32} (efConstruction 200); IVF nlist ∈ {{{num:nlist_set}}};
 IVF-PQ m = d/4 sub-quantisers × 8 bits (32 B/code SIFT, 25 B/code GloVe).</p>
 
 <h2>Part 1: Exact baseline</h2>
@@ -52,7 +52,8 @@ probed (Fig. 1, the green curves turn vertical). nprobe only controls which vect
 ranked by PQ's approximate distances, and with 4 dimensions per 8-bit sub-quantiser the quantisation error is larger than
 the gaps between the 10th and nearby neighbours, so true neighbours are found but mis-ranked. GloVe is worse because its
 neighbour distances are packed closer together (lower relative contrast), so the same error reorders more of them. Part 3
-shows that exact re-ranking of a short candidate list removes this ceiling. HNSW and IVF-Flat reach recall ≥ 0.99 on both datasets.</p>
+shows that exact re-ranking of a short candidate list removes this ceiling. HNSW and IVF-Flat reach recall ≥ 0.99 on both datasets
+(GloVe HNSW M = 8 stops lower only because the efSearch grid ends at 2048).</p>
 
 <h2>Part 3: Compression — PQ size and exact re-ranking (SIFT-1M)</h2>
 <p><b>Hypothesis (committed before the run, <code>hypothesis.md</code>).</b> (1) The plain IVF-PQ recall ceiling rises with m
@@ -76,33 +77,35 @@ true neighbours rank below 100th among the candidates and are never re-scored. (
 {{num:p3_cost_large_med}} of QPS (worst {{num:p3_cost_large_max}}): 100 extra exact distances against 10<sup>4</sup>–10<sup>5</sup>
 code scans. <i>But</i> at nprobe 1–4 it costs {{num:p3_cost_small}}: only ~10<sup>3</sup>–5·10<sup>3</sup> codes are scanned there,
 so 100 random-access reads of 512-byte vectors become a large share of the work. At recall 0.95, re-ranked m = 16 ({{num:p3_q95_m16}} QPS) and m = 32 ({{num:p3_q95_m32}}) beat IVF-Flat
-({{num:p3_q95_flat}} at the same nlist), because they scan 16–32-byte codes instead of 512-byte vectors.
+({{num:p3_q95_flat}} at the same nlist), because they scan 16–32-byte codes instead of 512-byte vectors. Against Part 2's
+best IVF-Flat (nlist 4096, {{num:sift_ivf_q95}} QPS) only {{num:p3_beats_best_flat}} wins.
 <i>Not predicted:</i> re-ranked m = 64 is <i>slower</i> than IVF-Flat ({{num:p3_q95_m64}} QPS). A PQ distance costs m scalar
 table lookups per code, while a float distance is a few SIMD fused multiply-adds, so beyond ~32 bytes scanning codes stops being
 cheaper than scanning raw floats. (4) Memory goes from {{num:p3_bpv_plain16}} to {{num:p3_bpv_rr16}} bytes/vector for m = 16:
 re-ranking needs the raw vectors, so the PQ saving survives only if those live on disk/SSD.</p>
 <p class="verdict"><b>Verdict:</b> hypotheses 1, 2 and 4 supported. Hypothesis 3 only partly: re-ranked m = 16/32 do beat IVF-Flat
-at 0.95, but m = 64 does not, and the "&lt; 25% cost" holds only for nprobe ≥ 8.</p>
+at 0.95 (same nlist), but m = 64 does not; "&lt; 25% cost" fails: median {{num:p3_cost_large_med}} at nprobe ≥ 8 but up to
+{{num:p3_cost_large_max}} (m = 8), and {{num:p3_cost_small}} at nprobe 1–4.</p>
 
 <h2>Part 4: Own data — intrinsic dimension</h2>
-<p><b>What I changed.</b> {{num:p4_n}} base vectors + 10,000 queries, always 128-d, drawn from a Gaussian living in a random
+<p><b>What I changed.</b> {{num:p4_n}} base vectors + 10,000 queries per setting, always 128-d, drawn from a Gaussian living in a random
 d_int-dimensional subspace (variance split evenly so E‖x‖² = 1 in every setting) plus small isotropic noise (total variance
-0.001). Only d_int changes: 8, 16, 32, 64, 128 (128 = plain isotropic Gaussian). <b>Control:</b> d_int = 16 regenerated with a
-new seed, nothing else changed. HNSW (M = 16) and IVF-Flat (nlist = {{num:p4_nlist}}); sweeps, selection and timing as in Part 2; generator
-seeded. <b>Hypothesis</b> (committed first): relative contrast falls with d_int; both indexes need more work, but IVF-Flat
-degrades faster (neighbours scatter over Voronoi cells, nprobe ≥ 25% of nlist at d_int = 128) and HNSW stays faster
-everywhere; d_int = 8 needs efSearch ≤ 32 and nprobe ≤ 8; the control moves QPS by &lt; 10%.</p>
+0.001). Each setting is its own seeded dataset of {{num:p4_per_ds}} vectors (under the 500K limit). Only d_int changes: 8, 16, 32, 64, 128 (128 = plain isotropic Gaussian, the no-structure baseline).
+<b>Control:</b> d_int = 16 regenerated with a new seed, nothing else changed.
+HNSW (M = 16) and IVF-Flat (nlist = {{num:p4_nlist}}); sweeps, selection and timing as in Part 2. <b>Hypothesis</b> (committed first):
+relative contrast falls with d_int; both indexes need more work, but IVF-Flat degrades faster (nprobe ≥ 25% of nlist at
+d_int = 128) and HNSW stays faster everywhere; d_int = 8 needs efSearch ≤ 32 and nprobe ≤ 8; the control moves QPS by &lt; 10%.</p>
 <figure>{{fig:part4_intrinsic_dim}}
 <figcaption>Figure 3. Left, middle: recall vs QPS for each d_int (dotted = control). Right: QPS at recall 0.95 (tune-selected,
 test-measured) vs d_int, with each setting's median relative contrast (mean distance / nearest-neighbour distance) in brackets;
 × = control; dashed = exact search.</figcaption></figure>
 <div class="tblock"><div class="cap">Table 5. Part 4 per setting: relative contrast, MLE local intrinsic dimension (k = 10), parameter, QPS and distance
-computations per query needed for recall 0.95.</div>
+computations per query needed for recall 0.95. Exact ms/q: one pass over 200 test queries (the sweep cap).</div>
 {{table:part4_intrinsic_dim}}</div>
 <p><b>What happened.</b> Relative contrast fell from {{num:p4_rc_d8}} to {{num:p4_rc_d128}} as d_int went from 8 to 128: in
 high intrinsic dimension the nearest neighbour is barely closer than a random point. Both indexes slowed down sharply, but
 <i>HNSW collapsed faster</i>: its QPS at 0.95 fell {{num:p4_hnsw_drop}} from d_int = 8 to {{num:p4_hnsw_last}}, IVF-Flat's
-{{num:p4_ivf_drop}} from 8 to 128. HNSW needed efSearch {{num:p4_hnsw_ef}} (distance computations per query
+{{num:p4_ivf_drop_same}} over the same range ({{num:p4_ivf_drop}} from 8 to 128). HNSW needed efSearch {{num:p4_hnsw_ef}} (distance computations per query
 ×{{num:p4_hnsw_ndis_ratio}}, {{num:p4_hnsw_ndis_first}} → {{num:p4_hnsw_ndis_last}}), and at d_int = 128 it reached only
 {{num:p4_hnsw_max_d128}} recall before costing more than exact search. IVF-Flat needed nprobe {{num:p4_ivf_np_d8}} →
 {{num:p4_ivf_np_d128}} of {{num:p4_nlist}} (×{{num:p4_ivf_ndis_ratio}} distances) and at d_int = 128 still reached 0.95 at
@@ -157,7 +160,7 @@ for SIFT-like data, sub-millisecond even at 10M since graph search grows slowly 
 low-contrast data I would use M = 32 and also try IVF-Flat (nlist ≈ 16K), since Part 4 shows IVF can win when contrast is low;
 both fit in memory and run far below 100 ms. These are extrapolations from 1M; 10M was not measured.</p>
 <p><b>5. How this benchmark could mislead.</b> (a) <i>Timing noise on a laptop</i> (turbo, thermal limits, background load). Tested:
-3 repeats each ≥ 0.5 s; repeat spread was {{num:rep_spread_med}} (median) and {{num:rep_spread_p90}} (90th percentile). The Part 4
+{{num:n_reps}} repeats each ≥ {{num:min_rep_s}} s; repeat spread was {{num:rep_spread_med}} (median) and {{num:rep_spread_p90}} (90th percentile). The Part 4
 control moved QPS at 0.95 by only {{num:p4_ctrl_q95}}, but single points at the same parameter differed by up to
 {{num:p4_ctrl_point_max}}. I report medians and also deterministic
 distance counts, and I treat speed differences below ~20% as ties. (b) <i>Per-call Python overhead</i> in the
@@ -166,6 +169,6 @@ one-query-at-a-time loop inflates the cost of the fastest settings. Tested: an e
 recall-0.95 setting ({{num:fastest095_us}} µs). Also checked: single-thread
 execution (CPU/wall median {{num:cpu_wall_med}}, max {{num:cpu_wall_max}}); no over-fitting of the tune-half selection (test minus tune recall
 {{num:tune_test_diff_mean}} on average); timed results identical to batched ones. <i>Not tested:</i> other machines, k ≠ 10,
-other efConstruction values, batched or multi-threaded index search (Part 1 shows batching changes exact-search throughput
-{{num:sift_batch_speedup}}×, so it could change the index comparison too), and data that does not fit in RAM.</p>
+other efConstruction values, batched or multi-threaded index search (batching speeds exact search {{num:sift_batch_speedup}}×, Part 1),
+and data that does not fit in RAM.</p>
 </body></html>

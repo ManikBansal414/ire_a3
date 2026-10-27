@@ -79,6 +79,12 @@ Ground truth is cached in `../cache/` (delete it to recompute).
   3 repeats over the timed queries (each repeat cycles through them for at
   least 0.5 s). CPU-time/wall-time is recorded to confirm
   single-thread execution. Index builds use all cores.
+* A sweep also stops once a query costs more than exact search. That cap is
+  exact search timed in one pass over 200 test queries (`bench.exact_ms`); it
+  uses no recall, only speed. In Part 4 the same measurement is the "exact ms/q"
+  of the report (rows with `index = Exact` in `results.csv`). It is a lighter
+  measurement than the index timings (1 pass, 200 queries, not median of 3 over
+  5,000); re-timing d_int = 8 and 16 the full way gave values within 6%.
 * Index size is the length of `faiss.serialize_index`.
 * The PDF is printed from HTML with headless Edge/Chrome (`BROWSER=...` to
   choose another Chromium browser); without one, open the generated
